@@ -13,7 +13,7 @@ for s in stories:
 
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-ollama = Ollama(model="your-fine-tuned-ollama-model")  # replace with your model name
+ollama = Ollama(model="Ollama3.1")  # replace with your model name
 
 def recommend(query, top_k=3):
     query_vec = embed_model.encode([query])[0]
@@ -44,4 +44,5 @@ if __name__ == "__main__":
 
     print("\nGenerated story from Ollama:")
     print(new_story)
+
 
