@@ -25,7 +25,7 @@ with client.audio.speech.with_streaming_response.create(
     model="gpt-4o-mini-tts",
     voice=selected_voice,
     input=story_text,
-    instructions="Depending on the theme of the story, narrate in a way that engages and interests readers"
+    instructions="Narrate the  story clearly and engagingly. Use natural pacing, expressive tone, and vary your voice for different characters. Emphasize emotions, suspense, and key moments to make the story come alive. Instructions for narration: Pause slightly at commas, longer at periods. Use tone and pitch changes for different characters. Highlight dramatic or emotional moments. Keep a steady, pleasant listening pace, like an audiobook."
 ) as response:
     response.stream_to_file(speech_file_path)
 
