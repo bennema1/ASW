@@ -1,6 +1,6 @@
 # webapp/app.py
 from flask import Flask, render_template
-import os  # ← REQUIRED
+import os
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
