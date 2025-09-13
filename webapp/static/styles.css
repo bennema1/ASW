@@ -1,92 +1,123 @@
-/* Make the app truly full-screen and remove default spacing */
-html, body {
-  height: 100%;
-  margin: 0;
+:root{
+  --glass: rgba(0,0,0,.35);
+  --text: #fff;
+  --muted: #c9c9c9;
+  --accent-like: #ff3b5c;
+  --accent-save: #4da3ff;
+  --bg: #000;
 }
-.app {
-  height: 100%;
-  background: #000; /* hides any letterboxing edges */
-  color: #fff;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text)}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.app{height:100%}
+
+/* Feed — vertical snap like TikTok */
+.feed{
+  height:100%;
+  overflow-y:auto;
+  scroll-snap-type:y mandatory;
+  -webkit-overflow-scrolling:touch;
+}
+.page{
+  position:relative;
+  height:100vh;
+  width:100%;
+  overflow:hidden;
+  scroll-snap-align:start;
+  background:#000;
+}
+.fullscreen-video{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  background:#000;
 }
 
-/* One-page canvas that holds the video and overlays */
-.page {
-  position: relative;
-  height: 100%;
-  width: 100%;
-  overflow: hidden; /* prevent scrollbars if video slightly overscales */
+/* Right-side actions rail */
+.actions{
+  position:absolute;
+  right:12px;
+  bottom:18%;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  align-items:center;
+  z-index:3;
+}
+.icon-btn{
+  width:56px;height:56px;border-radius:999px;border:none;
+  background:var(--glass);
+  display:grid;place-items:center;
+  cursor:pointer;backdrop-filter:blur(4px);
+  transition:transform .12s ease, background .12s ease;
+}
+.icon-btn:hover{ transform:scale(1.06) }
+.icon{ width:26px;height:26px;display:block }
+.counter{ font-size:12px;color:#f1f1f1;text-shadow:0 1px 2px rgba(0,0,0,.8) }
+
+/* Caption-safe zone */
+.caption-safe{
+  position:absolute;left:0;right:0;bottom:0;z-index:2;
+  padding:18px 16px 24px;
+  background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 55%,rgba(0,0,0,.85) 100%);
+}
+.caption-title{ margin:0 0 4px 0;font-size:18px;font-weight:600 }
+.caption-sub{ margin:0;font-size:14px;line-height:1.35;opacity:.95 }
+
+/* Comments drawer */
+.sheet-backdrop{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);
+  opacity:0;visibility:hidden;transition:opacity .18s ease, visibility .18s ease;z-index:40;
+}
+.sheet-backdrop.show{ opacity:1;visibility:visible }
+.sheet{
+  position:fixed;left:0;right:0;bottom:-70%;
+  height:70%;background:#0e0e0e;border-top-left-radius:16px;border-top-right-radius:16px;
+  box-shadow:0 -10px 30px rgba(0,0,0,.35);
+  transition:bottom .22s ease;z-index:41;
+  display:grid;grid-template-rows:auto 1fr;
+}
+.sheet.open{ bottom:0 }
+.sheet-header{
+  display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)
+}
+.sheet-title{ font-weight:600 }
+.sheet-close{
+  margin-left:auto;background:var(--glass);border:none;color:var(--text);
+  padding:8px 10px;border-radius:10px;cursor:pointer
+}
+.sheet-body{ overflow-y:auto;padding:10px 14px 110px }
+.comment{ display:grid;grid-template-columns:36px 1fr;gap:10px;margin:12px 0 }
+.avatar{ width:36px;height:36px;border-radius:999px;background:linear-gradient(45deg,#6ee7b7,#3b82f6) }
+.comment-bubble{ background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);padding:10px 12px;border-radius:12px }
+.comment-meta{ font-size:12px;color:var(--muted);margin-bottom:4px }
+.comment-text{ font-size:14px;line-height:1.3 }
+
+/* Comment input bar */
+.input-bar{
+  position:fixed;left:0;right:0;bottom:-70%;
+  background:#0e0e0e;border-top:1px solid rgba(255,255,255,.08);
+  display:flex;gap:8px;padding:10px;z-index:42;transition:bottom .22s ease
+}
+.input-bar.open{ bottom:0 }
+.input{
+  flex:1;padding:12px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.06);color:var(--text);outline:none
+}
+.send-btn{
+  padding:0 16px;border:none;border-radius:999px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer
 }
 
-/* Full-bleed video that fills the viewport "like TikTok" */
-.fullscreen-video {
-  position: absolute;
-  inset: 0;           /* top:0; right:0; bottom:0; left:0; */
-  width: 100%;
-  height: 100%;
-  object-fit: cover;  /* fill & crop to maintain aspect ratio */
-  /* hint: if your video feels dark, reduce overlay later in your rendered assets */
+/* Floating "Next" button */
+.next-btn{
+  position:fixed;right:14px;bottom:14px;z-index:5;
+  padding:10px 14px;border-radius:999px;border:none;background:#1f2937;color:#fff;font-weight:600;cursor:pointer;
+  box-shadow:0 6px 20px rgba(0,0,0,.3)
 }
 
-/* Floating vertical action bar on the right side */
-.actions {
-  position: absolute;
-  right: 12px;
-  bottom: 18%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  align-items: center;
-  z-index: 2; /* make sure it sits above the video */
-}
-
-/* Circular, glassy icon buttons */
-.icon-btn {
-  width: 56px;
-  height: 56px;
-  border-radius: 999px;
-  border: none;
-  background: rgba(0,0,0,0.35);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition: transform 120ms ease;
-}
-.icon-btn:hover { transform: scale(1.06); }
-
-.icon {
-  width: 28px;
-  height: 28px;
-  display: block;
-}
-
-/* Small counter label under the like button */
-.counter {
-  font-size: 12px;
-  color: #f1f1f1;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-}
-
-/* Bottom gradient for legible captions (optional story text area) */
-.caption-safe {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  padding: 20px 16px 28px;
-  background: linear-gradient(180deg,
-              rgba(0,0,0,0) 0%,
-              rgba(0,0,0,0.55) 55%,
-              rgba(0,0,0,0.8) 100%);
-  z-index: 1;
-}
-.caption-safe h1 {
-  margin: 0 0 4px 0;
-  font-size: 20px;
-  font-weight: 600;
-}
-.caption-safe p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.35;
-  opacity: 0.9;
+/* A11y focus */
+.icon-btn:focus-visible,.sheet-close:focus-visible,.send-btn:focus-visible,.input:focus-visible,.next-btn:focus-visible{
+  outline:2px solid #60a5fa;outline-offset:2px
 }
