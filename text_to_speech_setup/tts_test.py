@@ -17,7 +17,7 @@ print(f"Using voice: {selected_voice}")
 speech_file_path = Path("story.mp3")
 
 def get_story():
-    return story
+    return "At midnight, Emma heard her phone ring. It was a call from her own number. Trembling, she answered. A whisper hissed, “I’m inside your house.” She froze—she lived alone."
 
 story_text = get_story()
 
