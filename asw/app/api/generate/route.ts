@@ -89,11 +89,16 @@ export async function GET(req: NextRequest) {
     prompt: `${system}\n\nUser:\n${user}`,
     stream: true,
     options: {
-      num_predict: 140,   // shorter = faster
-      temperature: 0.8,
+      num_predict: 2000,   // shorter = faster
+      temperature: 0.7,
       top_p: 0.9,
       num_thread: 8,      // adjust to your CPU cores if you know them
-      num_ctx: 2048
+      num_ctx: 4096,
+      mirostat: 2,
+      mirostat_tau: 5.0,
+      mirostat_eta: 0.1,
+      repeat_penalty: 1.1,
+      repeat_last_n: 256
     },
     keep_alive: "10m"     // keep model hot between requests
   });
