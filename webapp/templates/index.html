@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Minimal Video Test</title>
+  <style>
+    html,body{margin:0;height:100%;background:#000}
+    video{width:100vw;height:100vh;object-fit:cover;display:block}
+  </style>
+</head>
+<body>
+  <video id="v"
+         src="/static/video/bg1.mp4"
+         muted
+         loop
+         playsinline
+         autoplay
+         controls></video>
+  <script>
+    // Try to start playback; log any errors so we can see them.
+    const v = document.getElementById('v');
+    v.play().catch(err => console.log('PLAY ERROR:', err && err.message));
+    v.addEventListener('error', () => console.log('VIDEO ERROR code:', v.error && v.error.code, v.currentSrc));
+  </script>
+</body>
+</html>

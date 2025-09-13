@@ -1,16 +1,16 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-/** ---- Tuning ---- */
-const BLOCK_SIZE = 35;           // words per subtitle block
-const WPM = 150;                 // reading speed (words per minute)
-const MIN_MS = 2000;             // minimum time per block
-const WATCHDOG_MS = 1500;        // flush tiny tails if idle this long
-const SMALL_TAIL = 6;            // flush 1..5 word tails
-const MAX_WORDS_PER_STORY = 600; // how much we ask the model per stream
-const FALLBACK_START_LEN = 120;  // if no markers seen by then, start from 0
 
-/** ---- Random voice pool ---- */
+const BLOCK_SIZE = 35;           
+const WPM = 150;                 
+const MIN_MS = 2000;             
+const WATCHDOG_MS = 1500;        
+const SMALL_TAIL = 6;            
+const MAX_WORDS_PER_STORY = 600; 
+const FALLBACK_START_LEN = 120;  
+
+
 const TTS_VOICE_POOL = [
   "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse",
 ];
@@ -23,30 +23,30 @@ export default function Page() {
   const [currentBlock, setCurrentBlock] = useState<string>("");
   const [currentVoice, setCurrentVoice] = useState<string>("alloy");
 
-  // Stream plumbing
+  
   const esRef = useRef<EventSource | null>(null);
-  const rawRef = useRef<string>("");              // full raw incoming text
-  const phaseRef = useRef<"pre" | "run">("pre");  // wait for Hook/Story/** before showing
+  const rawRef = useRef<string>("");              
+  const phaseRef = useRef<"pre" | "run">("pre");  
   const startRef = useRef<number>(0);
   const lastRef = useRef<number>(0);
-  const carryRef = useRef<string>("");            // partial word carry
+  const carryRef = useRef<string>("");            
 
-  // Display buffers
+  
   const bufferRef = useRef<string[]>([]);
   const queueRef = useRef<string[][]>([]);
   const displayingRef = useRef<boolean>(false);
   const doneRef = useRef<boolean>(false);
 
-  // Timers
+  
   const lastWordAtRef = useRef<number>(Date.now());
   const watchIntervalIdRef = useRef<number | null>(null);
 
-  /** ---- Audio queue (simple, sequential) ---- */
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioQueueRef = useRef<string[]>([]);
   const isPlayingRef = useRef<boolean>(false);
 
-  /** Plain TTS per block. No gating, no prefetch. */
+  
   async function queueTTS(text: string) {
     try {
       const res = await fetch("/api/tts", {
@@ -101,7 +101,7 @@ export default function Page() {
     isPlayingRef.current = false;
   }
 
-  /** ---- Subtitle timing (timer-driven, causes the pause you saw) ---- */
+  
   const blockDurationMs = (words: number) =>
     Math.max(MIN_MS, Math.round((words / WPM) * 60_000));
 
@@ -110,7 +110,7 @@ export default function Page() {
     const text = words.join(" ");
     setCurrentBlock(text);
 
-    // Fire TTS for this block (audio may start a bit later)
+    
     queueTTS(text);
 
     const ms = blockDurationMs(words.length);
@@ -125,12 +125,12 @@ export default function Page() {
 
     let next = queueRef.current.shift();
 
-    // Flush tiny tails so they don't get stuck
+    
     if ((!next || next.length === 0) && bufferRef.current.length > 0 && bufferRef.current.length < SMALL_TAIL) {
       next = bufferRef.current.splice(0, bufferRef.current.length);
     }
 
-    // If stream ended, flush leftovers
+    
     if ((!next || next.length === 0) && doneRef.current && bufferRef.current.length) {
       next = bufferRef.current.splice(0, bufferRef.current.length);
     }
@@ -139,7 +139,7 @@ export default function Page() {
     showBlock(next);
   }
 
-  /** ---- Helpers ---- */
+  
   function splitWordsWithCarry(incoming: string) {
     const parts = (carryRef.current + incoming).split(/(\s+)/);
     const words: string[] = [];
@@ -158,7 +158,7 @@ export default function Page() {
   }
 
   function sanitize(words: string[]) {
-    // strip stray markdown bold markers model may emit
+    
     return words.filter(w => w !== "**");
   }
 
@@ -176,7 +176,7 @@ export default function Page() {
     driveDisplay();
   }
 
-  // Accept Hook:, Story:, or ** ; fallback after N chars
+  
   function findStartIndex(raw: string) {
     const rxHook = /hook\s*:/i;
     const mh = rxHook.exec(raw);
@@ -193,7 +193,7 @@ export default function Page() {
     return -1;
   }
 
-  /** ---- Start one story stream (simple, no continuation) ---- */
+  
   function openStoryOnce() {
     const seed = Date.now().toString();
     const params = new URLSearchParams({
@@ -208,13 +208,11 @@ export default function Page() {
 
     es.onmessage = (e) => {
       if (e.data === "[DONE]") {
-        // include any dangling carry on close
         if (carryRef.current) {
           enqueueWords([carryRef.current]);
           carryRef.current = "";
         }
 
-        // final flush
         doneRef.current = true;
         if (bufferRef.current.length) {
           queueRef.current.push(bufferRef.current.splice(0, bufferRef.current.length));
@@ -229,7 +227,7 @@ export default function Page() {
 
       rawRef.current += e.data;
 
-      // Wait for a start marker before emitting to subs
+      
       if (phaseRef.current === "pre") {
         const start = findStartIndex(rawRef.current);
         if (start === -1) return;
@@ -238,7 +236,6 @@ export default function Page() {
         lastRef.current = start;
       }
 
-      // Feed only the delta beyond the start index
       const raw = rawRef.current;
       if (raw.length > lastRef.current) {
         const delta = raw.slice(lastRef.current);
@@ -255,7 +252,6 @@ export default function Page() {
     };
   }
 
-  /** ---- lifecycle: cleanup & reset ---- */
   function cleanup() {
     stopAudioQueue();
     try { esRef.current?.close(); } catch {}
@@ -284,13 +280,11 @@ export default function Page() {
     doneRef.current = false;
     lastWordAtRef.current = Date.now();
 
-    // fresh random voice each run
     const v = pickVoice();
     setCurrentVoice(v);
 
     openStoryOnce();
 
-    // watchdog to flush tiny tails during idle
     watchIntervalIdRef.current = window.setInterval(() => {
       if (displayingRef.current) return;
       if (queueRef.current.length > 0) return;
@@ -314,18 +308,16 @@ export default function Page() {
   useEffect(() => {
     resetAndStart();
     return () => cleanup();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** ---- Returned JSX ---- */
   return (
     <main style={{ minHeight: "100svh" }}>
-      {/* Background video */}
+      {}
       <video
         autoPlay muted loop playsInline src="/bg.mp4"
         style={{ position: "fixed", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -2 }}
       />
-      {/* Readability vignette */}
+      {}
       <div
         style={{
           position: "fixed", inset: 0,
@@ -334,7 +326,7 @@ export default function Page() {
         }}
       />
 
-      {/* Centered subtitles card */}
+      {}
       <div
         style={{
           position: "fixed",
@@ -349,10 +341,10 @@ export default function Page() {
         {currentBlock}
       </div>
 
-      {/* Hidden audio element that plays queued MP3s */}
+      {}
       <audio ref={audioRef} preload="none" hidden />
 
-      {/* New Generation button */}
+      {}
       <button
         onClick={handleNewGeneration}
         style={{
@@ -368,7 +360,7 @@ export default function Page() {
         New Generation
       </button>
 
-      {/* Tiny badge showing current voice */}
+      {}
       <div
         style={{
           position: "fixed", bottom: 24, right: 24,

@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
-      voice,          // alloy | ash | ballad | coral | echo | sage | shimmer | verse
+      voice,          
       input: text,
     });
 
@@ -29,7 +29,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (err: any) {
-    // Print the *actual* failure reason to your dev console
     try {
       const msg = err?.response ? await err.response.text() : (err?.message ?? String(err));
       console.error("TTS error:", msg);
