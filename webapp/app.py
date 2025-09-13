@@ -22,12 +22,28 @@ app = Flask(
 @app.route("/")
 def index():
     """
-    This function handles requests to "/".
-    It renders templates/index.html and passes it a variable called video_src.
-    For now we point at /static/videos/bg1.mp4 (you’ll upload that later).
+    Render the feed with multiple videos.
+    We list files in webapp/static/videos and build full URLs for the template.
     """
-    video_src = "/static/videos/bg1.mp4"
-    return render_template("index.html", video_src=video_src)
+    videos_dir = os.path.join(app.static_folder, "videos")
+    # Collect .mp4 files that actually exist (sorted by name for now)
+    filenames = []
+    try:
+        for name in sorted(os.listdir(videos_dir)):
+            if name.lower().endswith(".mp4"):
+                filenames.append(name)
+    except FileNotFoundError:
+        pass
+
+    # Fallback: if nothing is found, default to bg1.mp4 (your first file)
+    if not filenames:
+        filenames = ["bg1.mp4"]
+
+    # Turn filenames into browser paths like /static/videos/xxx.mp4
+    video_srcs = [f"/static/videos/{name}" for name in filenames]
+
+    return render_template("index.html", video_srcs=video_srcs)
+    # ^ index.html will loop over video_srcs to render one card per file
 
 # When you run `python app.py` locally, this starts a dev server on http://127.0.0.1:5000
 if __name__ == "__main__":
