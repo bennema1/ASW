@@ -1,0 +1,181 @@
+<!-- webapp/templates/index.html
+     PURPOSE:
+     - Render a single full-screen "card" with a looping background video.
+     - Show TikTok-like actions (Like / Save / Share) floating on the right.
+     - Persist Like/Save state in localStorage so it survives refreshes.
+     - Share uses Web Share API (mobile) with a clipboard fallback (desktop).
+
+     NOTE:
+     - {{ video_src }} is injected by Flask (app.py) so you can change the video
+       from Python without editing this HTML.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- Ensures mobile uses device width and proper scaling -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Infinite Stories — Demo</title>
+
+  <!-- Our CSS (add in 3B) -->
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="app">
+    <section class="page">
+      <!-- FULL-SCREEN BACKGROUND VIDEO
+           - muted + playsinline + autoplay are critical for mobile auto-play.
+           - loop keeps it continuous for the "infinite" effect.
+           - preload="auto" helps avoid a blank first frame. -->
+      <video
+        id="storyVideo"
+        class="fullscreen-video"
+        src="{{ video_src }}"
+        muted
+        loop
+        playsinline
+        autoplay
+        preload="auto"
+      ></video>
+
+      <!-- ACTION BUTTONS (right side, stacked) -->
+      <div class="actions">
+        <!-- LIKE -->
+        <button id="likeBtn" class="icon-btn" aria-label="Like" title="Like">
+          <!-- Outline heart by default; fill it when liked -->
+          <svg class="icon" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+            <path id="likeIconPath"
+              d="M12 21s-6.716-4.278-9.428-7.428C-.143 11.429-.34 7.659 2.343 5.343 4.1 3.7 6.9 3.9 8.657 5.657L12 9l3.343-3.343c1.757-1.757 4.557-1.957 6.314-.314 2.683 2.316 2.486 6.086-.229 8.229C18.716 16.722 12 21 12 21z"
+              stroke="#fff" stroke-width="1.5" fill="none" />
+          </svg>
+        </button>
+        <div id="likeCount" class="counter">0</div>
+
+        <!-- SAVE / BOOKMARK -->
+        <button id="saveBtn" class="icon-btn" aria-label="Save" title="Save">
+          <svg class="icon" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+            <path id="saveIconPath"
+              d="M6 2h12a2 2 0 0 1 2 2v18l-8-4-8 4V4a2 2 0 0 1 2-2z"
+              stroke="#fff" stroke-width="1.5" fill="none" />
+          </svg>
+        </button>
+
+        <!-- SHARE -->
+        <button id="shareBtn" class="icon-btn" aria-label="Share" title="Share">
+          <svg class="icon" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+            <path d="M13 5l7 7-7 7v-4H6v-6h7V5z" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- CAPTION SAFE ZONE (optional; for story text later) -->
+      <div class="caption-safe">
+        <h1>Don’t turn around.</h1>
+        <p>You’ll hear it before you see it.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Minimal JS: Like/Save persistence + Share behavior -->
+  <script>
+    // ---- WHY THIS JS EXISTS ----
+    // We want the demo to feel real without a backend:
+    // - localStorage remembers likes/saves across refreshes.
+    // - Share uses the native mobile share sheet when possible.
+
+    // Stable ID for this card (later, each story would have its own).
+    const CARD_ID = "demo-bg-1";
+
+    // Storage keys scoped to the card id (prevents collisions if you add more cards later).
+    const storageKeys = {
+      liked: `card:${CARD_ID}:liked`,
+      saved: `card:${CARD_ID}:saved`,
+      likeCount: `card:${CARD_ID}:likeCount`,
+    };
+
+    // Grab references once (faster and clearer than re-querying).
+    const likeBtn = document.getElementById("likeBtn");
+    const likeIconPath = document.getElementById("likeIconPath");
+    const likeCountEl = document.getElementById("likeCount");
+    const saveBtn = document.getElementById("saveBtn");
+    const saveIconPath = document.getElementById("saveIconPath");
+    const shareBtn = document.getElementById("shareBtn");
+
+    // Initialize state from localStorage (defaulting to not liked/saved and 0 likes).
+    let liked = localStorage.getItem(storageKeys.liked) === "1";
+    let saved = localStorage.getItem(storageKeys.saved) === "1";
+    let likeCount = parseInt(localStorage.getItem(storageKeys.likeCount) || "0", 10);
+
+    // Update the heart icon + count based on current state.
+    function renderLike() {
+      likeCountEl.textContent = String(likeCount);
+      if (liked) {
+        likeIconPath.setAttribute("fill", "#ff3b5c"); // filled heart
+        likeIconPath.removeAttribute("stroke");
+      } else {
+        likeIconPath.setAttribute("fill", "none");     // outline heart
+        likeIconPath.setAttribute("stroke", "#fff");
+      }
+    }
+
+    // Update the bookmark icon based on current state.
+    function renderSave() {
+      if (saved) {
+        saveIconPath.setAttribute("fill", "#4da3ff");  // filled bookmark
+        saveIconPath.removeAttribute("stroke");
+      } else {
+        saveIconPath.setAttribute("fill", "none");      // outline bookmark
+        saveIconPath.setAttribute("stroke", "#fff");
+      }
+    }
+
+    // Initial paint from stored values.
+    renderLike();
+    renderSave();
+
+    // When user taps Like:
+    likeBtn.addEventListener("click", () => {
+      liked = !liked;                                     // flip liked state
+      likeCount = Math.max(0, likeCount + (liked ? 1 : -1)); // adjust count
+      localStorage.setItem(storageKeys.liked, liked ? "1" : "0");
+      localStorage.setItem(storageKeys.likeCount, String(likeCount));
+      renderLike();                                       // refresh icon + count
+    });
+
+    // When user taps Save:
+    saveBtn.addEventListener("click", () => {
+      saved = !saved;
+      localStorage.setItem(storageKeys.saved, saved ? "1" : "0");
+      renderSave();
+    });
+
+    // When user taps Share:
+    shareBtn.addEventListener("click", async () => {
+      // Simple deep link format for this demo
+      const shareUrl = window.location.origin + "/?id=" + encodeURIComponent(CARD_ID);
+      const shareData = {
+        title: "Infinite Story",
+        text: "Check out this cliffhanger…",
+        url: shareUrl
+      };
+
+      // Prefer native mobile share sheet if available
+      if (navigator.share) {
+        try {
+          await navigator.share(shareData);
+        } catch (_) {
+          // user canceled; do nothing
+        }
+      } else {
+        // Desktop fallback: copy link to clipboard (or prompt if not supported)
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          alert("Link copied to clipboard!");
+        } catch {
+          prompt("Copy this link:", shareUrl);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
