@@ -8,12 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from collections import Counter
 
-
-# -------------------------
-# STEP 1. Keyword Extractor
-# -------------------------
 def extract_keywords(text: str, top_k=5) -> list:
-    """Extract simple keyword tags from text using word frequency."""
     words = re.findall(r"\b[a-zA-Z]{3,}\b", text.lower())
     stopwords = {
         "the", "and", "for", "with", "that", "this", "you", "but",
@@ -23,10 +18,6 @@ def extract_keywords(text: str, top_k=5) -> list:
     most_common = [str(w) for w, _ in Counter(words).most_common(top_k)]
     return most_common
 
-
-# -------------------------
-# STEP 2. Normalize Dataset
-# -------------------------
 def normalize_dataset(raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     normalized = []
 
@@ -48,26 +39,17 @@ def normalize_dataset(raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return normalized
 
 
-# -------------------------
-# STEP 3. Build Embeddings
-# -------------------------
 def build_embeddings(df: pd.DataFrame, model_name="all-MiniLM-L6-v2"):
-    """Generate embeddings for story outputs."""
     model = SentenceTransformer(model_name)
     embeddings = model.encode(df["output"].tolist(), show_progress_bar=True)
     return embeddings, model
 
 
 def build_similarity_matrix(embeddings):
-    """Compute cosine similarity matrix between all stories."""
     return cosine_similarity(embeddings)
 
 
-# -------------------------
-# STEP 4. Recommend Stories
-# -------------------------
 def recommend(df: pd.DataFrame, sim_matrix, story_id, top_k=5):
-    """Recommend top_k similar stories given a story_id."""
     idx = df.index[df["id"] == story_id][0]
     sims = sim_matrix[idx]
 
@@ -77,10 +59,6 @@ def recommend(df: pd.DataFrame, sim_matrix, story_id, top_k=5):
 
     return df.iloc[similar_idx][["id", "title", "tags", "output"]]
 
-
-# -------------------------
-# STEP 5. Main Script
-# -------------------------
 def main():
     # 1. Load raw data
     with open("dataset.json", "r", encoding="utf-8") as f:
