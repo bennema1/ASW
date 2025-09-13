@@ -13,7 +13,6 @@
   ctx: string;
   continuation: "aita" | "arc";
 }) {
-  // Parse categories from context if provided
   let categories: string[] = [];
   let categoryPrompt = "";
   
@@ -21,7 +20,6 @@
     try {
       categories = JSON.parse(ctx);
       if (categories.length > 0) {
-        // Map category IDs to genre descriptions for the prompt
         const genreMap: Record<string, string> = {
           mystery: "mystery and suspenseful thriller",
           romance: "romantic and heartfelt",
@@ -43,8 +41,6 @@
           .join(", ");
         
         categoryPrompt = `Generate a ${genreDescriptions} story. `;
-        
-        // If AITA is selected, force continuation type
         if (categories.includes("aita")) {
           continuation = "aita";
         }
@@ -53,11 +49,7 @@
       console.error("Failed to parse categories:", e);
     }
   }
-
-  // Modify your system prompt to include the category guidance
   const system = `You are a creative storyteller. ${categoryPrompt}Create an engaging ${maxWords}-word story with a compelling hook. ${rollingSummary ? `Previous context: ${rollingSummary}` : ''}`;
-  
-  // Rest of your prompt building logic...
   const user = mode === "initial" 
     ? `Write a ${maxWords}-word story beginning with "Hook:" or "Story:"`
     : `Continue the story...`;
