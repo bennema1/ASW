@@ -3,17 +3,14 @@ import { useEffect, useRef, useState } from "react";
 
 /** ---- Tuning ---- */
 const BLOCK_SIZE = 35;           // words per subtitle block
-const WPM = 150;                 // your requested reading speed
+const WPM = 150;                 // reading speed (words per minute)
 const MIN_MS = 2000;             // minimum time per block
 const WATCHDOG_MS = 1500;        // flush tiny tails if idle this long
 const SMALL_TAIL = 6;            // flush 1..5 word tails
 const MAX_WORDS_PER_STORY = 600; // how much we ask the model per stream
 const FALLBACK_START_LEN = 120;  // if no markers seen by then, start from 0
-const NEXT_START_MS = 20000;     // time-based auto-continue (ms)
-const CTX_CHARS = 3500;          // how much context to send for continuation
 
-
-/** ---- Random voice pool (like your Python) ---- */
+/** ---- Random voice pool ---- */
 const TTS_VOICE_POOL = [
   "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse",
 ];
@@ -25,171 +22,71 @@ export default function Page() {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [currentBlock, setCurrentBlock] = useState<string>("");
   const [currentVoice, setCurrentVoice] = useState<string>("alloy");
-  // --- audio gate (user click needed for autoplay) ---
-  const canAudioRef = useRef<boolean>(false);
-  const [audioEnabled, setAudioEnabled] = useState(false);
 
-  // --- TTS request queue (serialize + retry) ---
-  const ttsPendingRef = useRef<{ text: string; tries: number }[]>([]);
-  const ttsBusyRef = useRef<boolean>(false);
-
-
-  // Streams
-  const es1Ref = useRef<EventSource | null>(null);
-  const es2Ref = useRef<EventSource | null>(null);
-
-  // Raw buffers (for start marker parsing)
-  const raw1Ref = useRef<string>("");
-  const raw2Ref = useRef<string>("");
-
-  // Phases + indices
-  const phase1Ref = useRef<"pre" | "run">("pre");
-  const phase2Ref = useRef<"pre" | "run">("pre");
-  const start1Ref = useRef<number>(0);
-  const start2Ref = useRef<number>(0);
-  const last1Ref = useRef<number>(0);
-  const last2Ref = useRef<number>(0);
-  const carry1Ref = useRef<string>("");
-  const carry2Ref = useRef<string>("");
+  // Stream plumbing
+  const esRef = useRef<EventSource | null>(null);
+  const rawRef = useRef<string>("");              // full raw incoming text
+  const phaseRef = useRef<"pre" | "run">("pre");  // wait for Hook/Story/** before showing
+  const startRef = useRef<number>(0);
+  const lastRef = useRef<number>(0);
+  const carryRef = useRef<string>("");            // partial word carry
 
   // Display buffers
   const bufferRef = useRef<string[]>([]);
   const queueRef = useRef<string[][]>([]);
   const displayingRef = useRef<boolean>(false);
-  
-  // Done flags
-  const done1Ref = useRef<boolean>(false);
-  const done2Ref = useRef<boolean>(false);
-  const nextStartedRef = useRef<boolean>(false);
-
-  // For continuation context
-  const allWordsRef = useRef<string[]>([]);
+  const doneRef = useRef<boolean>(false);
 
   // Timers
   const lastWordAtRef = useRef<number>(Date.now());
-  const firstWordAtRef = useRef<number>(0);
-  const nextTimerIdRef = useRef<number | null>(null);
   const watchIntervalIdRef = useRef<number | null>(null);
 
-  /** ---- Audio queue (TTS) ---- */
+  /** ---- Audio queue (simple, sequential) ---- */
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioQueueRef = useRef<string[]>([]);
-  const audioTextQueueRef = useRef<string[]>([]);
   const isPlayingRef = useRef<boolean>(false);
-  const prefetchedTTSRef = useRef<Set<string>>(new Set());
 
-  function enqueueTTS(text: string) {
-    // Don’t waste API calls until user enables audio
-    if (!canAudioRef.current) return;
-
-    ttsPendingRef.current.push({ text, tries: 0 });
-    if (!ttsBusyRef.current) drainTTS();
-  }
-
-  async function drainTTS() {
-    if (ttsBusyRef.current) return;
-    const job = ttsPendingRef.current.shift();
-    if (!job) return;
-
-    ttsBusyRef.current = true;
-
+  /** Plain TTS per block. No gating, no prefetch. */
+  async function queueTTS(text: string) {
     try {
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: job.text, voice: currentVoice }),
+        body: JSON.stringify({ text, voice: currentVoice }),
       });
-
       if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        console.error("TTS HTTP", res.status, body);
-
-        // Retry on transient errors
-        if ([429, 500, 502, 503, 504].includes(res.status) && job.tries < 2) {
-          const delay = 500 * Math.pow(2, job.tries) + Math.random() * 250;
-          setTimeout(() => {
-            ttsPendingRef.current.unshift({ text: job.text, tries: job.tries + 1 });
-            ttsBusyRef.current = false;
-            drainTTS();
-          }, delay);
-          return;
-        }
-
-        // give up for this block
-        ttsBusyRef.current = false;
-        drainTTS();
+        console.error("TTS HTTP", res.status, await res.text().catch(() => ""));
         return;
       }
-
-    const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  audioQueueRef.current.push(url);
-  audioTextQueueRef.current.push(job.text); // align text with this URL
-  if (!isPlayingRef.current) playNext();
-  } catch (e) {
-    console.error("TTS fetch failed:", e);
-    // retry once on network error
-    if (job.tries < 2) {
-      const delay = 500 * Math.pow(2, job.tries) + Math.random() * 250;
-      setTimeout(() => {
-        ttsPendingRef.current.unshift({ text: job.text, tries: job.tries + 1 });
-        ttsBusyRef.current = false;
-        drainTTS();
-      }, delay);
-      return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      audioQueueRef.current.push(url);
+      if (!isPlayingRef.current) playNext();
+    } catch (e) {
+      console.error("queueTTS failed:", e);
     }
   }
-
-  ttsBusyRef.current = false;
-  drainTTS();
-}
-
 
   function playNext() {
     const audio = audioRef.current;
     const url = audioQueueRef.current.shift();
-    const text = audioTextQueueRef.current.shift();
-
     if (!audio || !url) {
       isPlayingRef.current = false;
       return;
     }
-
-    // We are starting THIS block’s audio — show its subtitle now
     isPlayingRef.current = true;
-    displayingRef.current = true;
-    if (text) setCurrentBlock(text);
-
     audio.src = url;
 
     const cleanup = () => URL.revokeObjectURL(url);
-
-    audio.onended = () => {
-      cleanup();
-      // current clip finished; advance to next subtitle/audio
-      displayingRef.current = false;
-      driveDisplay();
-      playNext();
-    };
-
-    audio.onerror = () => {
-      cleanup();
-      // on error, also advance to avoid getting stuck
-      displayingRef.current = false;
-      driveDisplay();
-      playNext();
-    };
+    audio.onended = () => { cleanup(); playNext(); };
+    audio.onerror = () => { cleanup(); playNext(); };
 
     audio.play().catch(err => {
       console.warn("Audio play error:", err);
       cleanup();
-      // advance anyway so UI doesn’t stall
-      displayingRef.current = false;
-      driveDisplay();
       playNext();
     });
   }
-
 
   function stopAudioQueue() {
     const audio = audioRef.current;
@@ -204,54 +101,37 @@ export default function Page() {
     isPlayingRef.current = false;
   }
 
-  /** ---- Subtitle block timing ---- */
+  /** ---- Subtitle timing (timer-driven, causes the pause you saw) ---- */
   const blockDurationMs = (words: number) =>
     Math.max(MIN_MS, Math.round((words / WPM) * 60_000));
 
   function showBlock(words: string[]) {
+    displayingRef.current = true;
     const text = words.join(" ");
+    setCurrentBlock(text);
 
-    if (audioEnabled) {
-      // Don’t show yet — generate/queue audio and let playNext set the subtitle
-      enqueueTTS(text);
+    // Fire TTS for this block (audio may start a bit later)
+    queueTTS(text);
 
-      // If nothing is playing, try to start immediately (when the first audio arrives)
-      if (!isPlayingRef.current) {
-        playNext();
-      }
-    } else {
-      // No audio: fall back to reading-speed timer
-      displayingRef.current = true;
-      setCurrentBlock(text);
-      const ms = blockDurationMs(words.length);
-      setTimeout(() => {
-        displayingRef.current = false;
-        driveDisplay();
-      }, ms);
-    }
+    const ms = blockDurationMs(words.length);
+    setTimeout(() => {
+      displayingRef.current = false;
+      driveDisplay();
+    }, ms);
   }
-
-  function enableAudio() {
-    canAudioRef.current = true;
-    setAudioEnabled(true);
-    // Nudge audio on user gesture to satisfy autoplay policy
-    try { audioRef.current?.play().catch(() => {}); } catch {}
-  }
-
 
   function driveDisplay() {
     if (displayingRef.current) return;
 
     let next = queueRef.current.shift();
 
-    // Flush tiny tails (1..5 words) so they don't get stuck
+    // Flush tiny tails so they don't get stuck
     if ((!next || next.length === 0) && bufferRef.current.length > 0 && bufferRef.current.length < SMALL_TAIL) {
       next = bufferRef.current.splice(0, bufferRef.current.length);
     }
 
-    // If all streams done, flush leftovers
-    const bothDone = done1Ref.current && (nextStartedRef.current ? done2Ref.current : true);
-    if ((!next || next.length === 0) && bothDone && bufferRef.current.length) {
+    // If stream ended, flush leftovers
+    if ((!next || next.length === 0) && doneRef.current && bufferRef.current.length) {
       next = bufferRef.current.splice(0, bufferRef.current.length);
     }
 
@@ -260,7 +140,7 @@ export default function Page() {
   }
 
   /** ---- Helpers ---- */
-  function splitWordsWithCarry(incoming: string, carryRef: React.MutableRefObject<string>) {
+  function splitWordsWithCarry(incoming: string) {
     const parts = (carryRef.current + incoming).split(/(\s+)/);
     const words: string[] = [];
     let newCarry = "";
@@ -282,41 +162,15 @@ export default function Page() {
     return words.filter(w => w !== "**");
   }
 
-  function enqueueWords(words: string[], fromFirstStream: boolean) {
+  function enqueueWords(words: string[]) {
     if (!words.length) return;
     const filtered = sanitize(words);
     if (filtered.length === 0) return;
-
-    // collect for continuation context
-    allWordsRef.current.push(...filtered);
-
-    // arm time-based auto-continue on first words of story #1
-    if (fromFirstStream && firstWordAtRef.current === 0) {
-      firstWordAtRef.current = Date.now();
-      if (!nextStartedRef.current && nextTimerIdRef.current == null) {
-        nextTimerIdRef.current = window.setTimeout(() => {
-          if (!nextStartedRef.current) {
-            nextStartedRef.current = true;
-            openSecondStoryContinuation(); // true continuation
-          }
-        }, NEXT_START_MS);
-      }
-    }
 
     bufferRef.current.push(...filtered);
     while (bufferRef.current.length >= BLOCK_SIZE) {
       queueRef.current.push(bufferRef.current.splice(0, BLOCK_SIZE));
     }
-
-    if (audioEnabled && queueRef.current.length > 0) {
-      const nextBlock = queueRef.current[0]; // the block that will show next
-      const nextText = nextBlock.join(" ");
-      if (!prefetchedTTSRef.current.has(nextText)) {
-        enqueueTTS(nextText);
-        prefetchedTTSRef.current.add(nextText);
-      }
-    }
-
 
     lastWordAtRef.current = Date.now();
     driveDisplay();
@@ -339,86 +193,58 @@ export default function Page() {
     return -1;
   }
 
-  // Build continuation context (last CTX_CHARS)
-  function buildCtx() {
-    const text = allWordsRef.current.join(" ");
-    return text.length <= CTX_CHARS ? text : text.slice(text.length - CTX_CHARS);
-  }
-
-  // Browser-safe base64
-  function toUrlB64(s: string) {
-    const b64 = btoa(unescape(encodeURIComponent(s)));
-    return encodeURIComponent(b64);
-  }
-
-  type StartMode = "markers" | "immediate";
-  function openStory(
-    esRef: React.MutableRefObject<EventSource | null>,
-    rawRef: React.MutableRefObject<string>,
-    phaseRef: React.MutableRefObject<"pre" | "run">,
-    startRef: React.MutableRefObject<number>,
-    lastRef: React.MutableRefObject<number>,
-    carryRef: React.MutableRefObject<string>,
-    opts: { maxWords: number; fromFirst: boolean; mode: "initial" | "continue"; startMode: StartMode; ctx?: string }
-  ) {
+  /** ---- Start one story stream (simple, no continuation) ---- */
+  function openStoryOnce() {
     const seed = Date.now().toString();
     const params = new URLSearchParams({
       seed,
-      maxWords: String(opts.maxWords),
+      maxWords: String(MAX_WORDS_PER_STORY),
       force: "1",
-      mode: opts.mode,
+      mode: "initial",
     });
-    if (opts.mode === "continue" && opts.ctx) params.set("ctx", opts.ctx);
 
     const es = new EventSource(`/api/generate?${params.toString()}`);
     esRef.current = es;
 
     es.onmessage = (e) => {
       if (e.data === "[DONE]") {
-        // include any dangling carry
+        // include any dangling carry on close
         if (carryRef.current) {
-          enqueueWords([carryRef.current], opts.fromFirst);
+          enqueueWords([carryRef.current]);
           carryRef.current = "";
         }
-        if (opts.fromFirst) done1Ref.current = true;
-        else done2Ref.current = true;
 
-        const bothDone = done1Ref.current && (nextStartedRef.current ? done2Ref.current : true);
-        if (bothDone && bufferRef.current.length) {
+        // final flush
+        doneRef.current = true;
+        if (bufferRef.current.length) {
           queueRef.current.push(bufferRef.current.splice(0, bufferRef.current.length));
           driveDisplay();
         }
 
         es.close();
         esRef.current = null;
-        setStatus((s) => (done1Ref.current && (nextStartedRef.current ? done2Ref.current : true)) ? "done" : s);
+        setStatus("done");
         return;
       }
 
       rawRef.current += e.data;
 
-      // Choose when to start emitting
+      // Wait for a start marker before emitting to subs
       if (phaseRef.current === "pre") {
-        if (opts.startMode === "immediate") {
-          phaseRef.current = "run";
-          startRef.current = 0;
-          lastRef.current = 0;
-        } else {
-          const start = findStartIndex(rawRef.current);
-          if (start === -1) return;
-          phaseRef.current = "run";
-          startRef.current = start;
-          lastRef.current = start;
-        }
+        const start = findStartIndex(rawRef.current);
+        if (start === -1) return;
+        phaseRef.current = "run";
+        startRef.current = start;
+        lastRef.current = start;
       }
 
-      // Feed after start index
+      // Feed only the delta beyond the start index
       const raw = rawRef.current;
       if (raw.length > lastRef.current) {
         const delta = raw.slice(lastRef.current);
         lastRef.current = raw.length;
-        const words = splitWordsWithCarry(delta, carryRef);
-        enqueueWords(words, opts.fromFirst);
+        const words = splitWordsWithCarry(delta);
+        enqueueWords(words);
       }
     };
 
@@ -429,39 +255,12 @@ export default function Page() {
     };
   }
 
-  function openFirstStory() {
-    openStory(es1Ref, raw1Ref, phase1Ref, start1Ref, last1Ref, carry1Ref, {
-      maxWords: MAX_WORDS_PER_STORY,
-      fromFirst: true,
-      mode: "initial",
-      startMode: "markers", // wait for Hook/Story/** (or fallback)
-    });
-  }
-
-  function openSecondStoryContinuation() {
-    const ctxB64 = toUrlB64(buildCtx());
-    openStory(es2Ref, raw2Ref, phase2Ref, start2Ref, last2Ref, carry2Ref, {
-      maxWords: MAX_WORDS_PER_STORY,
-      fromFirst: false,
-      mode: "continue",
-      startMode: "immediate", // no headings in continuation
-      ctx: ctxB64,
-    });
-  }
-
   /** ---- lifecycle: cleanup & reset ---- */
   function cleanup() {
     stopAudioQueue();
+    try { esRef.current?.close(); } catch {}
+    esRef.current = null;
 
-    try { es1Ref.current?.close(); } catch {}
-    try { es2Ref.current?.close(); } catch {}
-    es1Ref.current = null;
-    es2Ref.current = null;
-
-    if (nextTimerIdRef.current != null) {
-      window.clearTimeout(nextTimerIdRef.current);
-      nextTimerIdRef.current = null;
-    }
     if (watchIntervalIdRef.current != null) {
       window.clearInterval(watchIntervalIdRef.current);
       watchIntervalIdRef.current = null;
@@ -472,30 +271,24 @@ export default function Page() {
     setStatus("loading");
     setCurrentBlock("");
 
-    prefetchedTTSRef.current.clear();
-    raw1Ref.current = ""; raw2Ref.current = "";
-    phase1Ref.current = "pre"; phase2Ref.current = "pre";
-    start1Ref.current = 0; start2Ref.current = 0;
-    last1Ref.current = 0; last2Ref.current = 0;
-    carry1Ref.current = ""; carry2Ref.current = "";
+    rawRef.current = "";
+    phaseRef.current = "pre";
+    startRef.current = 0;
+    lastRef.current = 0;
+    carryRef.current = "";
 
     bufferRef.current = [];
     queueRef.current = [];
     displayingRef.current = false;
 
-    done1Ref.current = false;
-    done2Ref.current = false;
-    nextStartedRef.current = false;
-
-    allWordsRef.current = [];
+    doneRef.current = false;
     lastWordAtRef.current = Date.now();
-    firstWordAtRef.current = 0;
 
-    // pick a fresh random voice each generation
+    // fresh random voice each run
     const v = pickVoice();
     setCurrentVoice(v);
 
-    openFirstStory();
+    openStoryOnce();
 
     // watchdog to flush tiny tails during idle
     watchIntervalIdRef.current = window.setInterval(() => {
@@ -503,10 +296,8 @@ export default function Page() {
       if (queueRef.current.length > 0) return;
 
       const idle = Date.now() - lastWordAtRef.current;
-      const bothDone = done1Ref.current && (nextStartedRef.current ? done2Ref.current : true);
-
       if (bufferRef.current.length > 0) {
-        if (bufferRef.current.length < SMALL_TAIL && (idle >= WATCHDOG_MS || bothDone)) {
+        if (bufferRef.current.length < SMALL_TAIL && (idle >= WATCHDOG_MS || doneRef.current)) {
           queueRef.current.push(bufferRef.current.splice(0, bufferRef.current.length));
           driveDisplay();
         }
@@ -529,7 +320,7 @@ export default function Page() {
   /** ---- Returned JSX ---- */
   return (
     <main style={{ minHeight: "100svh" }}>
-      {/* Background video (optional) */}
+      {/* Background video */}
       <video
         autoPlay muted loop playsInline src="/bg.mp4"
         style={{ position: "fixed", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -2 }}
@@ -543,7 +334,7 @@ export default function Page() {
         }}
       />
 
-      {/* Centered subtitles card (what you see on screen) */}
+      {/* Centered subtitles card */}
       <div
         style={{
           position: "fixed",
@@ -576,24 +367,6 @@ export default function Page() {
       >
         New Generation
       </button>
-
-      {!audioEnabled && (
-        <button
-          onClick={enableAudio}
-          style={{
-            position: "fixed", bottom: 24, left: 24,
-            padding: "8px 12px",
-            borderRadius: 999, border: "1px solid rgba(255,255,255,0.35)",
-            background: "rgba(0,0,0,0.55)", color: "white",
-            fontSize: 14, cursor: "pointer",
-            backdropFilter: "blur(2px)"
-          }}
-          title="Enable sound"
-        >
-          Enable sound
-        </button>
-      )}
-
 
       {/* Tiny badge showing current voice */}
       <div
