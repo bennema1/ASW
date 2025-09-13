@@ -8,6 +8,7 @@
 # We keep this super small so it’s easy to reason about.
 
 from flask import Flask, render_template
+import os
 
 # Create the Flask app.
 # - static_folder tells Flask where to find files you serve “as-is” (CSS, videos).
