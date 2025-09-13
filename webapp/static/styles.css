@@ -1,1 +1,92 @@
+/* Make the app truly full-screen and remove default spacing */
+html, body {
+  height: 100%;
+  margin: 0;
+}
+.app {
+  height: 100%;
+  background: #000; /* hides any letterboxing edges */
+  color: #fff;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
 
+/* One-page canvas that holds the video and overlays */
+.page {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* prevent scrollbars if video slightly overscales */
+}
+
+/* Full-bleed video that fills the viewport "like TikTok" */
+.fullscreen-video {
+  position: absolute;
+  inset: 0;           /* top:0; right:0; bottom:0; left:0; */
+  width: 100%;
+  height: 100%;
+  object-fit: cover;  /* fill & crop to maintain aspect ratio */
+  /* hint: if your video feels dark, reduce overlay later in your rendered assets */
+}
+
+/* Floating vertical action bar on the right side */
+.actions {
+  position: absolute;
+  right: 12px;
+  bottom: 18%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: center;
+  z-index: 2; /* make sure it sits above the video */
+}
+
+/* Circular, glassy icon buttons */
+.icon-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0,0,0,0.35);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: transform 120ms ease;
+}
+.icon-btn:hover { transform: scale(1.06); }
+
+.icon {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+/* Small counter label under the like button */
+.counter {
+  font-size: 12px;
+  color: #f1f1f1;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Bottom gradient for legible captions (optional story text area) */
+.caption-safe {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 20px 16px 28px;
+  background: linear-gradient(180deg,
+              rgba(0,0,0,0) 0%,
+              rgba(0,0,0,0.55) 55%,
+              rgba(0,0,0,0.8) 100%);
+  z-index: 1;
+}
+.caption-safe h1 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+.caption-safe p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  opacity: 0.9;
+}
