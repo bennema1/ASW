@@ -1,26 +1,29 @@
 from flask import Flask, render_template
-import os
+import os, re
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
-@app.route("/")
-def index():
-    """Render one card per .mp4 found in webapp/static/video/ (singular)."""
-    print("RUNNING FROM:", __file__)  # sanity: which copy is running?
-
-    videos_dir = os.path.join(app.static_folder, "video")  # << singular
-    filenames = []
+def list_videos():
+    """Return browser paths for all .mp4 files in static/video/, sorted numerically when possible."""
+    videos_dir = os.path.join(app.static_folder, "video")
+    names = []
     try:
-        for name in sorted(os.listdir(videos_dir)):
-            if name.lower().endswith(".mp4"):
-                filenames.append(name)
+        for n in os.listdir(videos_dir):
+            if n.lower().endswith(".mp4"):
+                names.append(n)
     except FileNotFoundError:
         pass
 
-    # Build browser paths: /static/video/<file>
-    video_srcs = [f"/static/video/{name}" for name in filenames]
-    print("Serving videos:", video_srcs)
+    def sort_key(name):
+        m = re.search(r'(\d+)', name)
+        return (int(m.group(1)) if m else 10**9, name.lower())
 
+    names.sort(key=sort_key)
+    return [f"/static/video/{n}" for n in names]
+
+@app.route("/")
+def index():
+    video_srcs = list_videos()
     return render_template("index.html", video_srcs=video_srcs)
 
 if __name__ == "__main__":
