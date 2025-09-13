@@ -1,4 +1,3 @@
-# webapp/app.py
 from flask import Flask, render_template
 import os
 
@@ -6,8 +5,10 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 
 @app.route("/")
 def index():
-    """Render one card per .mp4 in webapp/static/videos/."""
-    videos_dir = os.path.join(app.static_folder, "videos")
+    """Render one card per .mp4 found in webapp/static/video/ (singular)."""
+    print("RUNNING FROM:", __file__)  # sanity: which copy is running?
+
+    videos_dir = os.path.join(app.static_folder, "video")  # << singular
     filenames = []
     try:
         for name in sorted(os.listdir(videos_dir)):
@@ -16,12 +17,11 @@ def index():
     except FileNotFoundError:
         pass
 
-    if not filenames:
-        filenames = ["bg1.mp4"]  # fallback
-
-    video_srcs = [f"/static/videos/{name}" for name in filenames]
+    # Build browser paths: /static/video/<file>
+    video_srcs = [f"/static/video/{name}" for name in filenames]
     print("Serving videos:", video_srcs)
+
     return render_template("index.html", video_srcs=video_srcs)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False, use_reloader=False)
