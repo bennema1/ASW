@@ -23,18 +23,21 @@ const lastBodies: string[] = [];
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const seed = parseInt(searchParams.get("seed") || "1", 10);
-  const maxWords = Math.min(220, parseInt(searchParams.get("maxWords") || "180", 10));
+  const maxWords = Math.min(220, parseInt(searchParams.get("maxWords") || "600", 10));
   const mode = (searchParams.get("mode") as "initial" | "continue") || "initial";
   const force = searchParams.get("force") === "1";
 
-  // optional base64 ctx from client
+  // optional base64 ctx from client (URL-safe)
+  // client sends encodeURIComponent(base64(...)), so decode it first
   let ctx = "";
   const b64 = searchParams.get("ctx");
   if (b64) {
     try {
-      ctx = Buffer.from(b64, "base64").toString("utf8");
+      const raw = decodeURIComponent(b64);
+      ctx = Buffer.from(raw, "base64").toString("utf8");
     } catch {}
   }
+
 
   // heuristic: if initial title contains AITA, use aita updates; else arc
   const cont = (searchParams.get("cont") as "aita" | "arc") || "arc";
@@ -62,15 +65,6 @@ export async function GET(req: NextRequest) {
     return sse(s);
   }
 
-
-  // Allow forcing generation via ?force=1
-  if (!force && simHashSeen(titleHint)) {
-    const s = new ReadableStream({
-      start(ctrl) { ctrl.enqueue(enc("[Similar to prior, skipping]\n")); ctrl.enqueue(enc("[DONE]\n")); ctrl.close(); }
-    });
-    return sse(s);
-  }
-
   const fastOpts: any = {
     num_predict: 140,          // ~140 tokens (tweak)
     temperature: 0.8,
@@ -89,7 +83,7 @@ export async function GET(req: NextRequest) {
     prompt: `${system}\n\nUser:\n${user}`,
     stream: true,
     options: {
-      num_predict: 2000,   // shorter = faster
+      num_predict: Math.min(4096, Math.round(maxWords * 1.4)),   // shorter = faster
       temperature: 0.7,
       top_p: 0.9,
       num_thread: 8,      // adjust to your CPU cores if you know them
