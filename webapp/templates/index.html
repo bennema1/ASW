@@ -1,156 +1,27 @@
-<!-- webapp/templates/index.html
-     PURPOSE:
-     - Render a single full-screen "card" with a looping background video.
-     - Show TikTok-like actions (Like / Save / Share) floating on the right.
-     - Persist Like/Save state in localStorage so it survives refreshes.
-     - Share uses Web Share API (mobile) with a clipboard fallback (desktop).
-
-     NOTE:
-     - {{ video_src }} is injected by Flask (app.py) so you can change the video
-       from Python without editing this HTML.
--->
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
-  <!-- Ensures mobile uses device width and proper scaling -->
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Stories — Demo</title>
-
-  <!-- Our CSS (add in 3B) -->
-  <link rel="stylesheet" href="/static/styles.css">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Minimal Video Test</title>
+  <style>
+    html,body{margin:0;height:100%;background:#000}
+    video{width:100vw;height:100vh;object-fit:cover;display:block}
+  </style>
 </head>
 <body>
-  <main class="app">
-       <div class="feed">
-     
-         {% for src in video_srcs %}
-         <section class="page" data-card-id="demo-{{ loop.index }}">
-           <video
-             class="fullscreen-video"
-             src="{{ src }}"
-             muted
-             loop
-             playsinline
-             preload="{{ 'auto' if loop.first else 'none' }}"
-             controls  <!-- TEMP: add controls to debug; remove later -->
-           ></video>
-
-           <div class="actions">
-             <!-- Like / Save / Share buttons (your existing markup here) -->
-           </div>
-
-           <div class="caption-safe">
-             <h1>Card {{ loop.index }}</h1>
-             <p>Now playing: {{ src.split('/')[-1] }}</p>
-           </div>
-         </section>
-         {% endfor %}
-
-       </div>
-     </main>
-
-
-  <!-- Minimal JS: Like/Save persistence + Share behavior -->
+  <video id="v"
+         src="/static/video/bg1.mp4"
+         muted
+         loop
+         playsinline
+         autoplay
+         controls></video>
   <script>
-    // ---- WHY THIS JS EXISTS ----
-    // We want the demo to feel real without a backend:
-    // - localStorage remembers likes/saves across refreshes.
-    // - Share uses the native mobile share sheet when possible.
-
-    // Stable ID for this card (later, each story would have its own).
-    const CARD_ID = "demo-bg-1";
-
-    // Storage keys scoped to the card id (prevents collisions if you add more cards later).
-    const storageKeys = {
-      liked: `card:${CARD_ID}:liked`,
-      saved: `card:${CARD_ID}:saved`,
-      likeCount: `card:${CARD_ID}:likeCount`,
-    };
-
-    // Grab references once (faster and clearer than re-querying).
-    const likeBtn = document.getElementById("likeBtn");
-    const likeIconPath = document.getElementById("likeIconPath");
-    const likeCountEl = document.getElementById("likeCount");
-    const saveBtn = document.getElementById("saveBtn");
-    const saveIconPath = document.getElementById("saveIconPath");
-    const shareBtn = document.getElementById("shareBtn");
-
-    // Initialize state from localStorage (defaulting to not liked/saved and 0 likes).
-    let liked = localStorage.getItem(storageKeys.liked) === "1";
-    let saved = localStorage.getItem(storageKeys.saved) === "1";
-    let likeCount = parseInt(localStorage.getItem(storageKeys.likeCount) || "0", 10);
-
-    // Update the heart icon + count based on current state.
-    function renderLike() {
-      likeCountEl.textContent = String(likeCount);
-      if (liked) {
-        likeIconPath.setAttribute("fill", "#ff3b5c"); // filled heart
-        likeIconPath.removeAttribute("stroke");
-      } else {
-        likeIconPath.setAttribute("fill", "none");     // outline heart
-        likeIconPath.setAttribute("stroke", "#fff");
-      }
-    }
-
-    // Update the bookmark icon based on current state.
-    function renderSave() {
-      if (saved) {
-        saveIconPath.setAttribute("fill", "#4da3ff");  // filled bookmark
-        saveIconPath.removeAttribute("stroke");
-      } else {
-        saveIconPath.setAttribute("fill", "none");      // outline bookmark
-        saveIconPath.setAttribute("stroke", "#fff");
-      }
-    }
-
-    // Initial paint from stored values.
-    renderLike();
-    renderSave();
-
-    // When user taps Like:
-    likeBtn.addEventListener("click", () => {
-      liked = !liked;                                     // flip liked state
-      likeCount = Math.max(0, likeCount + (liked ? 1 : -1)); // adjust count
-      localStorage.setItem(storageKeys.liked, liked ? "1" : "0");
-      localStorage.setItem(storageKeys.likeCount, String(likeCount));
-      renderLike();                                       // refresh icon + count
-    });
-
-    // When user taps Save:
-    saveBtn.addEventListener("click", () => {
-      saved = !saved;
-      localStorage.setItem(storageKeys.saved, saved ? "1" : "0");
-      renderSave();
-    });
-
-    // When user taps Share:
-    shareBtn.addEventListener("click", async () => {
-      // Simple deep link format for this demo
-      const shareUrl = window.location.origin + "/?id=" + encodeURIComponent(CARD_ID);
-      const shareData = {
-        title: "Infinite Story",
-        text: "Check out this cliffhanger…",
-        url: shareUrl
-      };
-
-      // Prefer native mobile share sheet if available
-      if (navigator.share) {
-        try {
-          await navigator.share(shareData);
-        } catch (_) {
-          // user canceled; do nothing
-        }
-      } else {
-        // Desktop fallback: copy link to clipboard (or prompt if not supported)
-        try {
-          await navigator.clipboard.writeText(shareUrl);
-          alert("Link copied to clipboard!");
-        } catch {
-          prompt("Copy this link:", shareUrl);
-        }
-      }
-    });
+    // Try to start playback; log any errors so we can see them.
+    const v = document.getElementById('v');
+    v.play().catch(err => console.log('PLAY ERROR:', err && err.message));
+    v.addEventListener('error', () => console.log('VIDEO ERROR code:', v.error && v.error.code, v.currentSrc));
   </script>
 </body>
 </html>
